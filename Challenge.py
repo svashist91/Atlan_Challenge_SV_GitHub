@@ -1,4 +1,4 @@
-# %% [markdown]
+
 # # Atlan Challenge 1
 # 
 # #### Objective: 
@@ -20,7 +20,6 @@
 
 
 
-# %% [markdown]
 # # Atlan Challenge 2
 # 
 # #### Objective: 
@@ -51,12 +50,6 @@
 # 
 
 
-
-
-
-# ## Imports
-
-# %%
 import os
 import logging
 import datetime
@@ -82,10 +75,8 @@ from pyatlan.model.fluent_search import FluentSearch, CompoundQuery
 from pyatlan.model.lineage import FluentLineage
 
 
-# %% [markdown]
-# ## Initiate Atlan client
+## Initiate Atlan client
 
-# %%
 class AtlanS3Manager:
     """
     A class to manage S3 assets in Atlan.
@@ -111,10 +102,9 @@ class AtlanS3Manager:
         except Exception as e:
             logging.exception(f"An unexpected error occurred: {e}")
 
-# %% [markdown]
-# ## Create Connection asset
 
-# %%
+## Create Connection asset
+
     def check_existing_connection(self, connection_name: str) -> str | None:
         """
         Checks if a connection with the given name and connector type exists in Atlan.
@@ -163,11 +153,8 @@ class AtlanS3Manager:
             return None
         
 
-
-# %% [markdown]
 # ## Create an S3 bucket asset
 
-# %%
     def check_existing_bucket(self, bucket_name: str, connection_qualified_name: str) -> str | None:
         """
         Checks if an S3 bucket with the given name exists in Atlan.
@@ -308,11 +295,7 @@ class AtlanS3Manager:
         response = self.client.asset.update_merging_cm(s3object_update)
         logging.info(f"Updated metadata for S3Object asset: {s3object.attributes.name}")
 
-
-# %% [markdown]
 # # Postgresql Dictionary
-
-# %%
 
 
     def get_connection_qualified_name(self, connection_name: str, connector_type: AtlanConnectorType) -> str | None:
@@ -375,11 +358,7 @@ class AtlanS3Manager:
             logging.error(f"Atlan API Error retrieving PostgreSQL tables: {e}")
             return {}  # Return an empty dictionary in case of an error
 
-
-# %% [markdown]
 # # S3 Dictionary
-
-# %%
 
 
     def get_s3_objects(self, connection_qualified_name: str) -> dict:
@@ -416,10 +395,8 @@ class AtlanS3Manager:
             logging.error(f"Atlan API Error retrieving S3 objects: {e}")
             return {}  # Return an empty dictionary in case of an error
 
-# %% [markdown]
 # # Snowflake Dictionary
 
-# %%
 
     def get_snowflake_tables(self, connection_qualified_name: str) -> dict:
         """
@@ -455,10 +432,7 @@ class AtlanS3Manager:
             logging.error(f"Atlan API Error retrieving Snowflake tables: {e}")
             return {}  # Return an empty dictionary in case of an error
         
-# %% [markdown]
 # # Creating Lineage Postgresql > S3 
-
-# %%
 
     def lineage_exists(self, source_guid: str, target_guid: str) -> bool:
         """
@@ -536,10 +510,7 @@ class AtlanS3Manager:
 
         return response
 
-# %% [markdown]
 # # Creating Lineage S3 > Snowflake
-
-# %%
 
     def lineage_exists(self, source_guid: str, target_guid: str) -> bool:
         """
@@ -717,7 +688,7 @@ if __name__ == "__main__":
     # Print the dictionary to verify
     print(snowflake_tables)
 
-    # Delete Lineage postgres > s3
+    # Create Lineage postgres > s3
     for key, guid_postsql in postgresql_tables.items():
         if key in s3_objects:
             guid_s3 = s3_objects[key]
@@ -729,7 +700,7 @@ if __name__ == "__main__":
                 print(f"Creating lineage between {key} in PostgreSQL ({guid_postsql}) and S3 ({guid_s3})")
                 manager.create_lineage(key, guid_postsql, guid_s3, Postgresql_connection_qualified_name) 
 
-    # Delete Lineage s3 > Snowflake
+    # Create Lineage s3 > Snowflake
     for key, guid_s3 in s3_objects.items():
         if key in snowflake_tables:
             guid_snow = snowflake_tables[key]
