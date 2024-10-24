@@ -209,6 +209,79 @@ class AtlanS3Manager:
 
 
 
+
+    def check_objects_missing_in_aws(self, connection_qualified_name: str, bucket_qualified_name: str, aws_objects_keys: set):
+        """
+        Checks for S3 objects in Atlan that do not exist in the AWS S3 bucket.
+
+        Args:
+            connection_qualified_name (str): The qualified name of the connection in Atlan.
+            bucket_qualified_name (str): The qualified name of the bucket in Atlan.
+            aws_objects_keys (set): Set of S3 object keys fetched from the AWS S3 bucket.
+
+        Returns:
+            list: List of Atlan S3 object keys that are missing in AWS S3.
+        """
+        try:
+            # Search for all S3 objects in Atlan using FluentSearch
+            request = (
+                FluentSearch()
+                .where(CompoundQuery.asset_type(S3Object))
+                .where(CompoundQuery.active_assets())
+                .include_on_results(S3Object.CONNECTION_QUALIFIED_NAME)
+                .include_on_results(S3Object.S3BUCKET_QUALIFIED_NAME)
+                .page_size(1000)
+            ).to_request()
+
+            missing_in_aws = []
+
+            for result in self.client.asset.search(request):
+                if isinstance(result, S3Object) and result.connection_qualified_name == connection_qualified_name and result.s3_bucket_qualified_name == bucket_qualified_name:
+                    # If the Atlan S3 object is not found in AWS S3 objects, add it to the missing list
+                    if result.name not in aws_objects_keys:
+                        missing_in_aws.append(result.guid)
+                        logging.warning(f"S3Object '{result.name}' exists in Atlan but not in AWS S3.")
+
+            return missing_in_aws
+        except AtlanError as e:
+            logging.error(f"Atlan API Error while checking for missing AWS S3 objects: {e}")
+            return []
+
+
+
+    def delete_object(self, object_list: list[str], object_type: str):
+        """
+        Deletes S3 bucket objects in Atlan by their GUIDs and returns the first deleted object.
+
+        Args:
+            object_list (list): List of GUIDs for the S3 buckets to delete.
+            object_tpe: Asset type to be deleted.
+
+        Returns:
+            str: The first deleted S3 bucket object, if found. Otherwise, returns None.
+        """
+        try:
+            # Purge the assets by GUID
+            response = self.client.asset.purge_by_guid(object_list)
+
+            # Check if assets of type S3Bucket were deleted
+            if deleted := response.assets_deleted(asset_type=object_type):
+                term = deleted[0]  # Get the first deleted S3 bucket
+                print(f"Given list of objects are deleted: {object_list}")
+                return term
+            else:
+                logging.info("No objects were deleted.")
+                return None
+
+        except AtlanError as e:
+            logging.error(f"Failed to delete the objects: {e}")
+            return None
+
+
+
+
+
+
     def s3_object_exists_atlan(self, connection_qualified_name: str, bucket_qualified_name: str, object_key: str):
         """
         Checks if an S3 object with the given key exists in Atlan for a specific connection and bucket.
@@ -632,11 +705,29 @@ if __name__ == "__main__":
 
 
     # List objects in the bucket
-    objects = s3.list_objects_v2(Bucket=bucket_name, Prefix='')['Contents']  # Directly access 'Contents'
+    aws_objects_keys = set()  # A set of object keys from AWS S3
+    paginator = s3.get_paginator('list_objects_v2')
+    pages = paginator.paginate(Bucket=bucket_name, Prefix='')
 
-    for obj in objects:
-        object_key = obj['Key']
+    for page in pages:
+        if 'Contents' in page:
+            for obj in page['Contents']:
+                aws_objects_keys.add(obj['Key'])
 
+    # Check if any objects are present in Atlan but missing in AWS S3
+    missing_in_aws = manager.check_objects_missing_in_aws(connection_qualified_name, bucket_qualified_name, aws_objects_keys)
+    print(f"GUIDs present in atlan S3 bucket but missing in AWS: {missing_in_aws}")
+    
+    # Only delete objects if the missing_in_aws list is not empty
+    if missing_in_aws:
+        manager.delete_object(missing_in_aws, S3Object)  # Use the actual asset type S3Object
+        logging.info(f"Deleted {len(missing_in_aws)} S3 objects from Atlan.")
+    else:
+        logging.info("No S3Objects to delete, moving on.")
+
+
+    # Now, process and sync AWS S3 objects with Atlan
+    for object_key in aws_objects_keys:
         try:
             # Check if the S3 object exists in Atlan
             existing_s3_object = manager.s3_object_exists_atlan(connection_qualified_name, bucket_qualified_name, object_key)
@@ -649,10 +740,10 @@ if __name__ == "__main__":
                 new_s3object = manager.create_s3_object(object_key, connection_qualified_name, bucket_qualified_name)
                 logging.info(f"Created S3Object asset for: {object_key}")
                 manager.update_s3_object_metadata(new_s3object, obj, bucket_name, bucket_qualified_name)
-                
 
         except AtlanError as e:
             logging.error(f"Error processing S3Object asset for {object_key}: {e}")
+
 
 
     connection_name = "postgres-sv" 
@@ -664,7 +755,7 @@ if __name__ == "__main__":
     postgresql_tables = manager.get_postgresql_tables(Postgresql_connection_qualified_name)
 
     # Print the dictionary to verify
-    print(postgresql_tables)
+    print(f"Postgresql Table names and GUIDs: {postgresql_tables}")
 
     connection_name = "aws-s3-connection-tech-challenge-sv"  
     connector_type = AtlanConnectorType.S3  
@@ -675,7 +766,7 @@ if __name__ == "__main__":
     s3_objects = manager.get_s3_objects(s3_connection_qualified_name)
 
     # Print the dictionary to verify
-    print(s3_objects)    
+    print(f"S3Objects names and GUIDs: {s3_objects}")    
 
     connection_name = "snowflake-sv" 
     connector_type = AtlanConnectorType.SNOWFLAKE  # Set the connector type to Snowflake
@@ -686,7 +777,7 @@ if __name__ == "__main__":
     snowflake_tables = manager.get_snowflake_tables(snowflake_connection_qualified_name)
 
     # Print the dictionary to verify
-    print(snowflake_tables)
+    print(f"Postgresql Table names and GUIDs: {snowflake_tables}")
 
     # Create Lineage postgres > s3
     for key, guid_postsql in postgresql_tables.items():
