@@ -716,7 +716,7 @@ if __name__ == "__main__":
 
     # Check if any objects are present in Atlan but missing in AWS S3
     missing_in_aws = manager.check_objects_missing_in_aws(connection_qualified_name, bucket_qualified_name, aws_objects_keys)
-    print(f"GUIDs present in atlan S3 bucket but missing in AWS: {missing_in_aws}")
+    logging.info(f"GUIDs present in atlan S3 bucket but missing in AWS: {missing_in_aws}")
     
     # Only delete objects if the missing_in_aws list is not empty
     if missing_in_aws:
@@ -743,7 +743,6 @@ if __name__ == "__main__":
 
         except AtlanError as e:
             logging.error(f"Error processing S3Object asset for {object_key}: {e}")
-
 
 
     connection_name = "postgres-sv" 
